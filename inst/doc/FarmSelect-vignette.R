@@ -6,7 +6,7 @@
 ## ------------------------------------------------------------------------
 library(FarmSelect)
 set.seed(100)
-P = 100 #dimension
+P = 200 #dimension
 N = 50 #samples
 K = 3 #nfactors
 Q = 5 #model size
@@ -27,15 +27,18 @@ output$beta.chosen
 output$coef.chosen
 
 ## ------------------------------------------------------------------------
-output = farm.select(Y,X, loss = "lasso" )
+output = farm.select(Y,X, loss = "scad", K.factors = 10)
 
 ## ------------------------------------------------------------------------
-output = farm.select(Y,X, robust = TRUE )
+set.seed(100)
+Prob = 1/(1+exp(-X%*%beta))
+Y = rbinom(N, 1, Prob)
+output = farm.select(Y,X, lin.reg=FALSE, loss = "lasso")
 
 ## ------------------------------------------------------------------------
-output = farm.adjust(Y,X)
+output = farm.res(X)
 names(output)
 
 ## ------------------------------------------------------------------------
-output = farm.adjust(Y,X, K.factors  = 30)
+output = farm.res(X, K.factors  = 30)
 
