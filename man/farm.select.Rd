@@ -4,28 +4,35 @@
 \alias{farm.select}
 \title{Factor-adjusted robust model selection}
 \usage{
-farm.select(Y, X, loss = c("mcp", "scad", "lasso"), verbose = TRUE,
-  robust = FALSE, lin.reg = TRUE, K.factors = NULL, max.iter = 10000,
-  nfolds = ceiling(length(Y)/3))
+farm.select(X, Y, loss = c("scad", "mcp", "lasso"), robust = TRUE,
+  cv = FALSE, tau = 2, lin.reg = TRUE, K.factors = NULL,
+  max.iter = 10000, nfolds = ceiling(length(Y)/3), eps = 1e-04,
+  verbose = TRUE)
 }
 \arguments{
-\item{Y}{a size n outcome vector.}
-
 \item{X}{an n x p covariate matrix with each row being a sample. Must have same number of rows as the size of \code{Y}.}
 
-\item{loss}{an \emph{optional} character string specifying the loss function to be minimized. Must be one of "mcp" (default), "scad" or "lasso". You can just specify the initial letter.}
+\item{Y}{a size n outcome vector.}
 
-\item{verbose}{a boolean determining whether or not to print output to the console. Default is TRUE.}
+\item{loss}{a character string specifying the loss function to be minimized. Must be one of "scad" (default) "mcp" or "lasso". You can just specify the initial letter.}
 
-\item{robust}{a boolean, specifying whether or not to use robust estimators for mean and variance. Default is FALSE.}
+\item{robust}{a boolean, specifying whether or not to use robust estimators for mean and variance. Default is TRUE.}
+
+\item{cv}{a boolean, specifying whether or  not to run cross-validation for the tuning parameter. Default is FALSE. Only used if \code{robust} is TRUE.}
+
+\item{tau}{\code{>0}, multiplier for the tuning parameter for Huber loss function. Default is 2. Only used if \code{robust} is TRUE and \code{cv} is FALSE. See details.}
 
 \item{lin.reg}{a boolean, specifying whether or not to assume that we have a linear regression model (TRUE) or a logit model (FALSE) structure. Default is TRUE.}
 
-\item{K.factors}{a \emph{optional} number of factors to be estimated. Otherwise estimated internally. K>0.}
+\item{K.factors}{number of factors to be estimated. Otherwise estimated internally. K>0.}
 
-\item{max.iter}{Maximum number of iterations across the regularization path. Default is 10000.}
+\item{max.iter}{maximum number of iterations across the regularization path. Default is 10000.}
 
-\item{nfolds}{The number of cross-validation folds. Default is ceiling(samplesize/3).}
+\item{nfolds}{the number of cross-validation folds. Default is ceiling(samplesize/3).}
+
+\item{eps}{Convergence threshhold for model fitting using \code{\link{ncvreg}}. The algorithm iterates until the RMSD for the change in linear predictors for any coefficient is less than eps. Default is \code{1e-4}.}
+
+\item{verbose}{a boolean specifying whether to print runtime updates to the console. Default is TRUE.}
 }
 \value{
 A list with the following items
@@ -34,47 +41,78 @@ A list with the following items
 \item{coef.chosen}{the coefficients of the chosen covariates}
 \item{X.residual}{the residual covariate matrix after adjusting for factors}
 \item{nfactors}{number of (estimated) factors}
+\item{n}{number of observations}
+\item{p}{number of dimensions}
+\item{robust}{whether robust parameters were used}
+\item{loss}{loss function used}
+#' @details Number of rows and columns of the covariate matrix must be at least 4 in order to be able to calculate latent factors.
 }
 \description{
 Given a covariate matrix and output vector, this function first adjusts the covariates for underlying factors and then performs model selection.
 }
 \details{
-Number of rows and columns of the covariate matrix must be at least 4 in order to be able to calculate latent factors.
-
-For details about the method, see Fan et al.(2017).
-
 For formula of how the covariates are  adjusted for latent factors, see Section 3.2 in Fan et al.(2017).
+
+The tuning parameter \code{= tau *  sigma * optimal rate } where \code{optimal rate } is the optimal rate for the tuning parameter. For details, see Fan et al.(2017). \code{sigma} is the standard deviation of the data.
+
+\code{\link{ncvreg}} is used to fit the model after decorrelation. This package may output its own warnings about failures to converge and model saturation.
 }
 \examples{
+##linear regression
 set.seed(100)
-P = 100 #dimension
+P = 200 #dimension
 N = 50 #samples
 K = 3 #nfactors
-Q = 5 #model size
+Q = 3 #model size
 Lambda = matrix(rnorm(P*K, 0,1), P,K)
 F = matrix(rnorm(N*K, 0,1), N,K)
 U = matrix(rnorm(P*N, 0,1), P,N)
 X = Lambda\%*\%t(F)+U
 X = t(X)
-beta_1 = 3+3*runif(Q)
+beta_1 = rep(5,Q)
 beta = c(beta_1, rep(0,P-Q))
-eps = rnorm(N)
+eps = rt(N, 2.5)
 Y = X\%*\%beta+eps
 
 ##with default options
-output = farm.select(Y,X)
+output = farm.select(X,Y) #robust, no cross-validation
 output$beta.chosen #variables selected
 output$coef.chosen #coefficients of selected variables
 
-##changing the loss function and inputting factors
-output = farm.select(Y,X, loss = "scad", K.factors = 4)
+#examples of other robustification options
+output = farm.select(X,Y,robust = FALSE) #non-robust
+output = farm.select(X,Y, tau = 3) #robust, no cross-validation, specified tau
+#output = farm.select(X,Y, cv= TRUE) #robust, cross-validation: LONG RUNNING!
 
-##use a logistic regression model
+##changing the loss function and inputting factors
+output = farm.select(X, Y,loss = "mcp", K.factors = 4)
+
+##use a logistic regression model, a larger sample size is desired.
+\dontrun{
+set.seed(100)
+P = 400 #dimension
+N = 300 #samples
+K = 3 #nfactors
+Q = 3 #model size
+Lambda = matrix(rnorm(P*K, 0,1), P,K)
+F = matrix(rnorm(N*K, 0,1), N,K)
+U = matrix(rnorm(P*N, 0,1), P,N)
+X = Lambda\%*\%t(F)+U
+X = t(X)
+beta_1 = rep(5, Q)
+beta = c(beta_1, rep(0,P-Q))
+eps = rnorm(N)
 Prob = 1/(1+exp(-X\%*\%beta))
 Y = rbinom(N, 1, Prob)
-output = farm.select(Y,X, lin.reg=FALSE, loss = "lasso")
 
+output = farm.select(X,Y, lin.reg=FALSE, eps=1e-3)
+output$beta.chosen
+output$coef.chosen
+}
 }
 \references{
 Fan J., Ke Y., Wang K., "Decorrelation of Covariates for High Dimensional Sparse Regression." \url{https://arxiv.org/abs/1612.08490}
+}
+\seealso{
+\code{\link{print.farm.select}} \code{\link{farm.res}}
 }
